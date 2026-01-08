@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Access: Armiel Protocol</title>
+    <style>
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
+            color: #e0e0e0;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* 공통 애니메이션 */
+        .fade-in { animation: fadeIn 1.5s forwards; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 화면 효과용 오버레이 */
+        #screen-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 100; pointer-events: none;
+            opacity: 0; transition: opacity 0.6s ease-in-out;
+        }
+
+        /* 붉은색 노이즈 글리치 */
+        .glitch-active {
+            animation: glitch-anim 0.15s infinite;
+            background: rgba(255, 0, 0, 0.3) !important;
+            pointer-events: all !important;
+        }
+
+        @keyframes glitch-anim {
+            0% { transform: translate(0); filter: hue-rotate(0deg); }
+            25% { transform: translate(-8px, 4px); filter: contrast(2); }
+            50% { transform: translate(8px, -4px); }
+            75% { transform: translate(-4px, -8px); filter: invert(0.1); }
+            100% { transform: translate(0); }
+        }
+
+        /* 인트로 */
+        #intro-screen {
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            height: 100vh;
+            background: radial-gradient(circle, #111 0%, #000 100%);
+        }
+        .ready-text { font-size: 1.8rem; letter-spacing: 12px; color: #fff; animation: blink 2s infinite; margin-bottom: 30px; }
+        @keyframes blink { 50% { opacity: 0.1; } }
+        
+        .enter-btn { padding: 12px 35px; background: transparent; border: 1px solid #444; color: #888; cursor: pointer; letter-spacing: 4px; transition: 0.2s; }
+        .enter-btn:hover { border-color: #fff; color: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.2); background: #111; }
+        .enter-btn:active { background: #333; transform: scale(0.98); }
+
+        /* 선택 화면 */
+        #selection-screen { display: none; height: 100vh; justify-content: center; align-items: center; gap: 80px; }
+        .select-card { width: 280px; text-align: center; cursor: pointer; position: relative; transition: 0.3s; }
+        .select-card img { width: 100%; height: 420px; object-fit: cover; filter: grayscale(100%) brightness(0.5); border: 1px solid #222; transition: 0.8s ease; }
+        .select-card:hover img { filter: grayscale(30%) brightness(0.8); border-color: #555; }
+        .select-card:active { transform: scale(0.98); }
+        .select-card h3 { margin-top: 20px; letter-spacing: 5px; color: #666; transition: 0.4s; }
+        .select-card:hover h3 { color: #fff; }
+
+        /* 프로필 화면 */
+        #profile-screen { display: none; height: 100vh; justify-content: center; align-items: center; }
+        .profile-container { display: flex; width: 1100px; height: 650px; background: #050505; border: 1px solid #1a1a1a; box-shadow: 0 0 100px rgba(0,0,0,1); position: relative; }
+        
+        .char-image-box { flex: 1.3; overflow: hidden; border-right: 1px solid #1a1a1a; background: #000; }
+        .char-image-box img { width: 100%; height: 100%; object-fit: cover; opacity: 0.9; }
+        
+        .char-info { flex: 1; padding: 60px; position: relative; }
+        .label { font-size: 0.75rem; color: #444; margin-top: 25px; letter-spacing: 2px; }
+        .value { font-size: 2.5rem; font-weight: bold; margin-bottom: 10px; color: #eee; }
+        .affiliation { font-size: 1.4rem; color: #888; }
+        .status { font-size: 1.1rem; margin-top: 15px; font-weight: bold; transition: color 0.5s; }
+
+        /* 히든 코드 입력란 */
+        .secret-area { margin-top: 50px; border-top: 1px dashed #333; padding-top: 20px; display: none; }
+        .secret-input { 
+            background: transparent; border: none; border-bottom: 1px solid #333; 
+            color: #fff; font-family: inherit; width: 150px; outline: none; letter-spacing: 2px; 
+            transition: 0.3s;
+        }
+        .secret-btn { background: #111; border: 1px solid #333; color: #666; cursor: pointer; font-size: 0.8rem; padding: 2px 10px; margin-left: 10px; }
+        .secret-btn:hover { color: #fff; border-color: #fff; }
+        .secret-btn:active { background: #fff; color: #000; }
+
+        .back-btn { position: absolute; bottom: 40px; right: 40px; color: #333; cursor: pointer; font-size: 0.8rem; transition: 0.3s; }
+        .back-btn:hover { color: #fff; text-shadow: 0 0 5px #fff; }
+
+        /* 타락 텍스트 효과 */
+        .broken-text { color: #ff0000 !important; text-shadow: 2px 0 #fff, -2px 0 #000; letter-spacing: 3px; animation: textShaking 0.2s infinite; }
+        @keyframes textShaking { 0% { transform: translate(1px, 1px); } 50% { transform: translate(-1px, -1px); } 100% { transform: translate(0, 0); } }
+
+        /* 에러 발생 시 흔들림 효과 */
+        @keyframes errorShake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        .shake-active {
+            animation: errorShake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+            border-bottom-color: #ff0000 !important;
+            color: #ff0000 !important;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="screen-overlay"></div>
+
+    <div id="intro-screen">
+        <div class="ready-text">DATA LINK: READY</div>
+        <button class="enter-btn" onclick="playSound('click'); transition('selection-screen')">ACCESS</button>
+    </div>
+
+    <div id="selection-screen">
+        <div class="select-card fade-in" onclick="playSound('click'); loadProfile('talisman')">
+            <img src="1762977548.webp" alt="Talisman">
+            <h3>TALISMAN</h3>
+        </div>
+        <div class="select-card fade-in" onclick="playSound('click'); loadProfile('armiel')" style="animation-delay: 0.3s;">
+            <img src="1763628333.webp" alt="Armiel">
+            <h3>ARMIEL</h3>
+        </div>
+    </div>
+
+    <div id="profile-screen">
+        <div class="profile-container fade-in">
+            <div class="char-image-box">
+                <img id="p-img" src="" alt="Profile">
+            </div>
+            <div class="char-info">
+                <div class="label">CODE NAME</div>
+                <div id="p-name" class="value"></div>
+                
+                <div class="label">AFFILIATION</div>
+                <div id="p-aff" class="affiliation"></div>
+
+                <div class="label">CURRENT STATUS</div>
+                <div id="p-status" class="status"></div>
+
+                <div id="secret-box" class="secret-area">
+                    <div style="font-size: 0.7rem; color: #444; margin-bottom: 5px;">> OVERRIDE_KEY_REQUIRED</div>
+                    <input type="password" id="secret-code" class="secret-input" placeholder="PASSCODE">
+                    <button class="secret-btn" onclick="playSound('click'); checkSecret()">EXEC</button>
+                </div>
+                
+                <div class="back-btn" onclick="playSound('click'); transition('selection-screen')">ESC_TO_LIST</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 오디오 컨텍스트 (효과음 엔진)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+
+            if (type === 'click') {
+                // 진지한 단말기 틱 소리 (Sine Wave, 아주 짧은 감쇠)
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(1500, now); // 높은 음에서 시작
+                osc.frequency.exponentialRampToValueAtTime(1000, now + 0.05); // 살짝 떨어짐
+                
+                gainNode.gain.setValueAtTime(0.08, now); // 볼륨 작게 (진지함)
+                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.05); // 빠르게 사라짐
+                
+                osc.start(now);
+                osc.stop(now + 0.05);
+
+            } else if (type === 'error') {
+                // 에러 발생 시 낮은 '웅' 소리
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+                
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.linearRampToValueAtTime(0, now + 0.2);
+                
+                osc.start(now);
+                osc.stop(now + 0.2);
+
+            } else if (type === 'glitch') {
+                // 타락 시 지지직거리는 소리 (Sawtooth)
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(50, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.5);
+                
+                // 볼륨을 불규칙하게
+                gainNode.gain.setValueAtTime(0.2, now);
+                gainNode.gain.linearRampToValueAtTime(0.5, now + 0.1);
+                gainNode.gain.linearRampToValueAtTime(0.1, now + 0.3);
+                gainNode.gain.linearRampToValueAtTime(0, now + 1.0);
+                
+                osc.start(now);
+                osc.stop(now + 1.0);
+            }
+        }
+
+        const data = {
+            talisman: { 
+                name: "탈리스만", aff: "인첼라 (INCELLA)", status: "ACTIVE", color: "#fff", 
+                img: "1762977548.webp" 
+            },
+            armiel: { 
+                name: "아르미엘", aff: "세우르 (SEUR)", status: "M.I.A", color: "#666", 
+                img: "1763628333.webp",
+                corruptedImg: "305a4458-7ecc-4671-a2ce-76951a5d0027.webp", 
+                corruptedStatus: "CØrrUPtIOn",
+                isCorrupted: false 
+            }
+        };
+
+        let currentCharId = null;
+
+        function transition(targetId) {
+            const overlay = document.getElementById('screen-overlay');
+            overlay.style.opacity = '1';
+            setTimeout(() => {
+                document.getElementById('intro-screen').style.display = 'none';
+                document.getElementById('selection-screen').style.display = 'none';
+                document.getElementById('profile-screen').style.display = 'none';
+                
+                const target = document.getElementById(targetId);
+                target.style.display = 'flex';
+                
+                if(targetId !== 'profile-screen') {
+                    // 메인 화면으로 갈 때 인풋 리셋
+                    const input = document.getElementById('secret-code');
+                    input.value = '';
+                    input.classList.remove('shake-active'); // 에러 클래스 제거
+                }
+
+                overlay.style.opacity = '0';
+            }, 600);
+        }
+
+        function loadProfile(id) {
+            currentCharId = id;
+            const char = data[id];
+            const overlay = document.getElementById('screen-overlay');
+            overlay.style.opacity = '1';
+
+            setTimeout(() => {
+                const imgEl = document.getElementById('p-img');
+                const statusEl = document.getElementById('p-status');
+                const nameEl = document.getElementById('p-name');
+                const affEl = document.getElementById('p-aff');
+
+                nameEl.innerText = char.name;
+                affEl.innerText = char.aff;
+
+                // 타락 여부 확인
+                if (id === 'armiel' && char.isCorrupted) {
+                    imgEl.src = char.corruptedImg;
+                    statusEl.innerText = `>> ${char.corruptedStatus}`;
+                    statusEl.className = "status broken-text";
+                    statusEl.style.color = "#ff0000";
+                    document.getElementById('secret-box').style.display = 'none';
+                } else {
+                    imgEl.src = char.img;
+                    statusEl.innerText = `>> ${char.status}`;
+                    statusEl.className = "status";
+                    statusEl.style.color = char.color;
+                    
+                    document.getElementById('secret-box').style.display = (id === 'armiel') ? 'block' : 'none';
+                }
+                
+                // 입력창 초기화
+                const input = document.getElementById('secret-code');
+                input.value = '';
+                input.classList.remove('shake-active');
+
+                document.getElementById('selection-screen').style.display = 'none';
+                document.getElementById('profile-screen').style.display = 'flex';
+                overlay.style.opacity = '0';
+            }, 600);
+        }
+
+        function checkSecret() {
+            const inputEl = document.getElementById('secret-code');
+            const val = inputEl.value;
+            
+            if (val.toLowerCase() === "corruption") {
+                // 성공 로직
+                const overlay = document.getElementById('screen-overlay');
+                
+                playSound('glitch');
+                overlay.classList.add('glitch-active');
+                overlay.style.opacity = '0.8';
+
+                setTimeout(() => {
+                    const char = data['armiel'];
+                    char.isCorrupted = true; 
+
+                    document.getElementById('p-img').src = char.corruptedImg;
+                    const statusEl = document.getElementById('p-status');
+                    statusEl.innerText = `>> ${char.corruptedStatus}`;
+                    statusEl.classList.add('broken-text');
+                    statusEl.style.color = "#ff0000";
+                    
+                    document.getElementById('secret-box').style.display = 'none';
+                    
+                    overlay.classList.remove('glitch-active');
+                    overlay.style.opacity = '0';
+                }, 1500);
+            } else {
+                // 실패 로직 (흔들림 효과)
+                playSound('error'); // 웅~ 하는 낮은 소리
+                inputEl.classList.remove('shake-active'); // 애니메이션 리셋을 위해 제거했다가
+                void inputEl.offsetWidth; // 리플로우 강제 (애니메이션 재시작 트릭)
+                inputEl.classList.add('shake-active'); // 다시 추가
+            }
+        }
+    </script>
+</body>
+</html>
